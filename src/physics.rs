@@ -27,9 +27,11 @@ pub struct Universe {
 
     // Preallocated arrays, used as scratch for calculations.
     #[serde(default)]
+    albedos: Vec<f64>,
+    #[serde(default)]
     source: Vec<f64>,
     #[serde(default)]
-    transp: Vec<f64>,
+    transport: Vec<f64>,
     #[serde(default)]
     sink: Vec<f64>,
     #[serde(default)]
@@ -42,8 +44,9 @@ impl Universe {
     pub fn initialise(&mut self) -> Result<()> {
         let system_size = self.initial_temperatures.len();
         self.latitude = Trig::new_vec(system_size);
+        self.albedos = vec![0.0; system_size];
         self.source = vec![0.0; system_size];
-        self.transp = vec![0.0; system_size];
+        self.transport = vec![0.0; system_size];
         self.sink = vec![0.0; system_size];
         self.dx = vec![0.0; system_size];
         self.dx2 = vec![0.0; system_size];
@@ -62,13 +65,21 @@ impl Universe {
         // Compute the sink
         self.planet
             .merged_ir_cooling(temperatures, &mut self.sink)?;
-        // Compute the source
-        self.insolation(temperatures, time)?;
-        let transport = self.energy_transport();
 
-        for (outval, source_i, transp_i, sink_i, temp_i) in
-            izip!(d_temp, &self.source, &transport, &self.sink, temperatures)
-        {
+        // Compute the current albedo for each latitude
+        self.planet.albedo(temperatures, &mut self.albedos);
+
+        // Compute the source
+        self.insolation(time)?;
+        self.energy_transport();
+
+        for (outval, source_i, transp_i, sink_i, temp_i) in izip!(
+            d_temp,
+            &self.source,
+            &self.transport,
+            &self.sink,
+            temperatures
+        ) {
             *outval = self.planet.heat_capacity(*temp_i) * (source_i + transp_i - sink_i);
         }
 
@@ -78,7 +89,7 @@ impl Universe {
     // Absorbed Stellar Radiation (ASR) function, Spiegel et al. 2008
     // Computes insolation received at the top of the atmosphere TOA as a function of the global orbital parameters defined.
     // Daily averaged insolation (W m^-2), Hartmann 2016.
-    fn insolation(&mut self, temperatures: &[f64], time: f64) -> Result<()> {
+    fn insolation(&mut self, time: f64) -> Result<()> {
         let decl = self.planet.declination(time)?;
         let decl_tmp = abs!(decl.rad) - PI / 2.;
         let eccentricity = self.planet.eccentricity(time)?;
@@ -92,17 +103,16 @@ impl Universe {
 
         let factor = self.planet.insolation_factor * distance_ratio_squared;
 
-        // Compute the current albedo for each latitude
-        let albedo = self.planet.albedo(temperatures);
-
-        for (outval, lat, albedo_i) in izip!(&mut self.source, &self.latitude, &albedo) {
+        for (outval, lat, albedo_i) in izip!(&mut self.source, &self.latitude, &self.albedos) {
             // Conditions determining the value of the hour angle (rad) as defined in Berger 1978 and Hartmann 2016.
             // Cosine of the zenith angle for any latitude, season and time of the day, Hartmann 2016.
             let zenith_angle_cos = {
                 if (abs!(lat.rad) + decl_tmp) < 0.0 {
                     let hour_angle = acos!(-lat.tan * decl.tan);
                     hour_angle * lat.sin * decl.sin + sin!(hour_angle) * lat.cos * decl.cos
-                } else if lat.rad * decl.rad > 0.0 {
+                } else if lat.rad.is_normal() && (lat.rad.signum() == decl.rad.signum()) {
+                    // check if lat.rad * decl.rad > 0.0, but since we don't care about
+                    // the result, we can infer if the product would be positive.
                     PI * lat.sin * decl.sin
                 } else {
                     0.0
@@ -117,12 +127,12 @@ impl Universe {
 
     // 1D time-dependent diffusion equation, Spiegel et al. 2008
     // Calculates variation of the temperature as a function of time (K s^-1)
-    fn energy_transport(&mut self) -> Vec<f64> {
-        izip!(&self.dx, &self.dx2, &self.latitude)
-            .map(|(dx_i, dx2_i, lat)| {
-                self.planet.fiducial_diffusion_coefficient * (dx2_i - (lat.tan * dx_i))
-            })
-            .collect()
+    fn energy_transport(&mut self) {
+        for (transp, dx_i, dx2_i, lat) in
+            izip!(&mut self.transport, &self.dx, &self.dx2, &self.latitude)
+        {
+            *transp = self.planet.fiducial_diffusion_coefficient * (dx2_i - (lat.tan * dx_i));
+        }
     }
 
     // Computation of the second derivative of the temperature as a function of the sine of latitude (cf 1D time-dependent diffusion equation).
@@ -310,23 +320,20 @@ impl Planet {
     }
 
     // Calculates planet albedo according to Gilmore 2014, Equation 5.
-    fn albedo(&self, temperatures: &[f64]) -> Vec<f64> {
+    fn albedo(&self, temperatures: &[f64], albedos: &mut [f64]) {
         // Coefficients can be tuned to account for the spectral type of the star.
         // albedo_low_temperature:  combined effect of ice/snow and clouds at low temperature, no unit
         // albedo_high_temperature: effective albedo of clouds and surface at high temperature, no unit
         // planet.temperature_centre_transition: center of the smooth transition between the two constant values (K)
         // planet.temperature_width_transition:  width of the transition between the two constant values (K)
-        temperatures
-            .iter()
-            .map(|temp| {
-                (f64::midpoint(self.albedo_low_temperature, self.albedo_high_temperature))
-                    - ((self.albedo_low_temperature - self.albedo_high_temperature) / 2.)
-                        * tanh!(
-                            (temp - self.temperature_centre_transition)
-                                / self.temperature_width_transition
-                        )
-            })
-            .collect()
+        for (albedo, temp) in izip!(albedos, temperatures) {
+            *albedo = (f64::midpoint(self.albedo_low_temperature, self.albedo_high_temperature))
+                - ((self.albedo_low_temperature - self.albedo_high_temperature) / 2.)
+                    * tanh!(
+                        (temp - self.temperature_centre_transition)
+                            / self.temperature_width_transition
+                    );
+        }
     }
 
     fn eccentricity(&self, time: f64) -> Result<f64> {
