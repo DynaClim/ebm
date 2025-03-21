@@ -23,7 +23,7 @@ pub struct Universe {
 
     // Precomputed latitude arrays
     #[serde(default)]
-    latitude: Vec<Latitude>,
+    latitude: Vec<Trig>,
 
     // Preallocated arrays, used as scratch for calculations.
     #[serde(default)]
@@ -41,7 +41,7 @@ pub struct Universe {
 impl Universe {
     pub fn initialise(&mut self) -> Result<()> {
         let system_size = self.initial_temperatures.len();
-        self.latitude = Latitude::new_vec(system_size);
+        self.latitude = Trig::new_vec(system_size);
         self.source = vec![0.0; system_size];
         self.transp = vec![0.0; system_size];
         self.sink = vec![0.0; system_size];
@@ -80,10 +80,7 @@ impl Universe {
     // Daily averaged insolation (W m^-2), Hartmann 2016.
     fn insolation(&mut self, temperatures: &[f64], time: f64) -> Result<()> {
         let decl = self.planet.declination(time)?;
-        let decl_cos = cos!(decl);
-        let decl_sin = sin!(decl);
-        let decl_tan = tan!(decl);
-        let decl_tmp = abs!(decl) - PI / 2.;
+        let decl_tmp = abs!(decl.rad) - PI / 2.;
         let eccentricity = self.planet.eccentricity(time)?;
 
         // Square of the ratio of the semi-major axis over the instantneous distance given by the Kepler's third law for eccentric orbits.
@@ -103,10 +100,10 @@ impl Universe {
             // Cosine of the zenith angle for any latitude, season and time of the day, Hartmann 2016.
             let zenith_angle_cos = {
                 if (abs!(lat.rad) + decl_tmp) < 0.0 {
-                    let hour_angle = acos!(-lat.tan * decl_tan);
-                    hour_angle * lat.sin * decl_sin + sin!(hour_angle) * lat.cos * decl_cos
-                } else if lat.rad * decl > 0.0 {
-                    PI * lat.sin * decl_sin
+                    let hour_angle = acos!(-lat.tan * decl.tan);
+                    hour_angle * lat.sin * decl.sin + sin!(hour_angle) * lat.cos * decl.cos
+                } else if lat.rad * decl.rad > 0.0 {
+                    PI * lat.sin * decl.sin
                 } else {
                     0.0
                 }
@@ -342,10 +339,10 @@ impl Planet {
 
     // Declination angle latitude of the substellar point as a function of time.
     // Berger 1978
-    fn declination(&self, time: f64) -> Result<f64> {
-        Ok(asin!(
-            sin!(self.obliquity(time)?) * sin!(self.stellar_longitude(time))
-        ))
+    fn declination(&self, time: f64) -> Result<Trig> {
+        let declination_radians =
+            asin!(sin!(self.obliquity(time)?) * sin!(self.stellar_longitude(time)));
+        Ok(Trig::new(declination_radians))
     }
 
     // Stellar longitude as a function of time
@@ -397,28 +394,29 @@ impl Planet {
     }
 }
 
-// Latitudes and associated trigonometric values.
+// Trigs and associated trigonometric values.
 #[derive(Deserialize, Serialize, Clone, Debug, Default, PartialEq)]
-struct Latitude {
+struct Trig {
     rad: f64,
     cos: f64,
     sin: f64,
     tan: f64,
 }
 
-impl Latitude {
+impl Trig {
+    fn new(x: f64) -> Self {
+        Self {
+            cos: cos!(x),
+            sin: sin!(x),
+            tan: tan!(x),
+            rad: x,
+        }
+    }
+
     // Create the latitude array and precompute all the trigonometric values
     fn new_vec(system_size: usize) -> Vec<Self> {
         LinSpace::new(90.0_f64, -90.0_f64, system_size)
-            .map(|x| {
-                let x = x.to_radians();
-                Self {
-                    sin: sin!(x),
-                    cos: cos!(x),
-                    tan: tan!(x),
-                    rad: x,
-                }
-            })
+            .map(|x| Self::new(x.to_radians()))
             .collect()
     }
 }
