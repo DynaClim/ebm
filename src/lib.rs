@@ -38,7 +38,8 @@ impl System for EnergyBalanceModel {
         temperatures: &[f64],
         output: &mut [f64],
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        Ok(self.data.derive(time, temperatures, output)?)
+        self.data.derive(time, temperatures, output)?;
+        Ok(())
     }
     // Function that outputs each step of the solution
     fn solout(
@@ -53,3 +54,6 @@ impl System for EnergyBalanceModel {
         Ok(self.output.write_json_line(&j)?)
     }
 }
+
+#[cfg(test)]
+mod tests;

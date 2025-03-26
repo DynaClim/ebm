@@ -14,7 +14,7 @@ const PERIHELION_LONGTITUDE_RAD: f64 = PERIHELION_LONGTITUDE_DEG.to_radians();
 
 /// Contains all static data required for calculation of physics in this module.
 /// Provides the derivation function [derive] as the public interface.
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, Default)]
 #[serde(deny_unknown_fields)]
 pub struct Universe {
     /// User specified planetary parameters
@@ -41,6 +41,10 @@ pub struct Universe {
 }
 
 impl Universe {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     pub fn initialise(&mut self) -> Result<()> {
         let system_size = self.initial_temperatures.len();
         self.latitude = Trig::new_vec(system_size);
@@ -62,16 +66,25 @@ impl Universe {
     pub fn derive(&mut self, time: f64, temperatures: &[f64], d_temp: &mut [f64]) -> Result<()> {
         // First (K rad^-1) and second (K rad^-2) derivative of the temperature (K rad^-1)
         self.d2t_dx2(temperatures);
+
         // Compute the sink
-        self.planet
-            .merged_ir_cooling(temperatures, &mut self.sink)?;
+        for (olr, temp) in izip!(&mut self.sink, temperatures) {
+            *olr = self.planet.merged_ir_cooling(*temp)?;
+        }
 
         // Compute the current albedo for each latitude
-        self.planet.albedo(temperatures, &mut self.albedos);
+        for (albedo, temp) in izip!(&mut self.albedos, temperatures) {
+            *albedo = self.planet.albedo(*temp);
+        }
 
         // Compute the source
         self.insolation(time)?;
-        self.energy_transport();
+
+        for (transp, dx_i, dx2_i, lat) in
+            izip!(&mut self.transport, &self.dx, &self.dx2, &self.latitude)
+        {
+            *transp = self.planet.energy_transport(*dx_i, *dx2_i, lat.tan);
+        }
 
         for (outval, source_i, transp_i, sink_i, temp_i) in izip!(
             d_temp,
@@ -80,7 +93,11 @@ impl Universe {
             &self.sink,
             temperatures
         ) {
-            *outval = self.planet.heat_capacity(*temp_i) * (source_i + transp_i - sink_i);
+            *outval = self.planet.heat_capacity(*temp_i) * (
+                source_i 
+                + transp_i
+                - sink_i
+                );
         }
 
         Ok(())
@@ -123,16 +140,6 @@ impl Universe {
             *outval = (factor * zenith_angle_cos) * (1.0 - *albedo_i);
         }
         Ok(())
-    }
-
-    // 1D time-dependent diffusion equation, Spiegel et al. 2008
-    // Calculates variation of the temperature as a function of time (K s^-1)
-    fn energy_transport(&mut self) {
-        for (transp, dx_i, dx2_i, lat) in
-            izip!(&mut self.transport, &self.dx, &self.dx2, &self.latitude)
-        {
-            *transp = self.planet.fiducial_diffusion_coefficient * (dx2_i - (lat.tan * dx_i));
-        }
     }
 
     // Computation of the second derivative of the temperature as a function of the sine of latitude (cf 1D time-dependent diffusion equation).
@@ -185,6 +192,12 @@ pub enum Source {
     Interpolate(Interpolator<f64>),
 }
 
+impl Default for Source {
+    fn default() -> Self {
+        Self::Constant(0.0)
+    }
+}
+
 impl Source {
     fn calculate(&self, time: f64) -> Result<f64> {
         match &self {
@@ -221,7 +234,7 @@ impl Source {
 }
 
 // TODO complete documentation of these variables
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, Default)]
 #[serde(deny_unknown_fields)]
 pub struct Planet {
     /// Planet albedo at low temperature, no unit
@@ -264,12 +277,20 @@ pub struct Planet {
     land_fraction: f64,
     /// Proportion of the planet's surface that is aqua, no unit. Note [`Planet.land_fraction`] + [`Planet.water_fraction`] must equal 1.
     water_fraction: f64,
+
     // Calculated internally as 1. / (water mass heat capacity + land mass heat capacity)
     #[serde(skip)]
     heat_capacity_reciprocal: f64,
+    #[serde(skip)]
+    gilmore_albedo_term1: f64,
+    #[serde(skip)]
+    gilmore_albedo_term2: f64,
 }
 
 impl Planet {
+    pub fn new() -> Self {
+        Self::default()
+    }
     fn initialise(&mut self) -> Result<()> {
         #[allow(clippy::float_cmp)]
         // User supplied fractions should equal exactly 1.0.
@@ -292,7 +313,13 @@ impl Planet {
 
         self.heat_capacity_reciprocal = 1.
             / (self.water_fraction * OCEAN_HEAT_CAPACITY + self.land_fraction * LAND_HEAT_CAPACITY);
-        // Convert obliquity from degrees to radians.
+ 
+        // albedo_low_temperature:  combined effect of ice/snow and clouds at low temperature, no unit
+        // albedo_high_temperature: effective albedo of clouds and surface at high temperature, no unit
+        self.gilmore_albedo_term1 = f64::midpoint(self.albedo_low_temperature, self.albedo_high_temperature);
+        self.gilmore_albedo_term2 = (self.albedo_low_temperature - self.albedo_high_temperature) / 2.;
+
+       // Convert obliquity from degrees to radians.
         match &mut self.obliquity {
             Source::Constant(initial) => {
                 *initial = initial.to_radians();
@@ -320,20 +347,17 @@ impl Planet {
     }
 
     // Calculates planet albedo according to Gilmore 2014, Equation 5.
-    fn albedo(&self, temperatures: &[f64], albedos: &mut [f64]) {
+    // The hyperbolic tangent has been replaced with an approximation for performance.
+    fn albedo(&self, temperature: f64) -> f64 {
         // Coefficients can be tuned to account for the spectral type of the star.
-        // albedo_low_temperature:  combined effect of ice/snow and clouds at low temperature, no unit
-        // albedo_high_temperature: effective albedo of clouds and surface at high temperature, no unit
         // planet.temperature_centre_transition: center of the smooth transition between the two constant values (K)
         // planet.temperature_width_transition:  width of the transition between the two constant values (K)
-        for (albedo, temp) in izip!(albedos, temperatures) {
-            *albedo = (f64::midpoint(self.albedo_low_temperature, self.albedo_high_temperature))
-                - ((self.albedo_low_temperature - self.albedo_high_temperature) / 2.)
-                    * tanh!(
-                        (temp - self.temperature_centre_transition)
-                            / self.temperature_width_transition
-                    );
-        }
+        self.gilmore_albedo_term1
+            - self.gilmore_albedo_term2
+                * tanh!(
+                    (temperature - self.temperature_centre_transition)
+                        / self.temperature_width_transition
+                )
     }
 
     fn eccentricity(&self, time: f64) -> Result<f64> {
@@ -359,30 +383,26 @@ impl Planet {
     }
 
     // Calculates the outgoing longwave radiation of the planet as a function of its temperature.
-    fn merged_ir_cooling(&self, temperatures: &[f64], sink: &mut [f64]) -> Result<()> {
+    fn merged_ir_cooling(&self, temperature: f64) -> Result<f64> {
         // For T < 322.5 K:
         //      Modified Stefan-Boltzmann law to account for Earth's atmospheric composition, Dressing et al. 2010
         // For 322.5 < T < 787.2 K:
         //      Interpolation of GCM simulations, Chaverot et al. 2023
         // For 893.2 < T < 1055.9:
         //      Interpolation of GCM simulations, Turbet et al. 2022
-        for (olr, temp) in izip!(sink, temperatures) {
-            *olr = {
-                // The Stefan-Boltzmann relationship is not valid above 322.5 K
-                if *temp < 322.5 {
-                    // 0.5925 (no unit) is the coefficient accounting for atmospheric composition
-                    (STEFAN_BOLTZMANN * temp.powi(4))
-                        / (1. + (0.5925 * (temp / CRITICAL_TEMPERATURE).powi(3)))
-                } else {
-                    let (_x, y) = self
-                        .outgoing_longwave_radiation
-                        .interpolate(*temp)
-                        .context("Outgoing Longwave Radiation")?;
-                    y
-                }
-            };
-        }
-        Ok(())
+        // The Stefan-Boltzmann relationship is not valid above 322.5 K
+        let olr = if temperature < 322.5 {
+            // 0.5925 (no unit) is the coefficient accounting for atmospheric composition
+            (STEFAN_BOLTZMANN * temperature.powi(4))
+                / (1. + (0.5925 * (temperature / CRITICAL_TEMPERATURE).powi(3)))
+        } else {
+            let (_x, y) = self
+                .outgoing_longwave_radiation
+                .interpolate(temperature)
+                .context("Outgoing Longwave Radiation")?;
+            y
+        };
+        Ok(olr)
     }
 
     // Calculates effective surface heat capacity depending on the temperature and the surface type (ocean, land, ice, cold ice)
@@ -399,6 +419,13 @@ impl Planet {
             COLDICE_HEAT_CAPACITY_RECIPROCAL
         }
     }
+
+    // 1D time-dependent diffusion equation, Spiegel et al. 2008
+    // Calculates variation of the temperature as a function of time (K s^-1)
+    fn energy_transport(&self, dx_i: f64, dx2_i: f64, lat_tan: f64) -> f64 {
+        self.fiducial_diffusion_coefficient * (dx2_i - (lat_tan * dx_i))
+    }
+
 }
 
 // Trigs and associated trigonometric values.
@@ -439,3 +466,6 @@ impl Trig {
 // Spiegel et al. 2008, https://doi.org/10.1086/588089
 // Turbet et al. 2022, https://doi.org/10.1038/s41586-021-03873-w
 // Williams & Kasting 1997, https://doi.org/10.1006/icar.1997.5759
+
+#[cfg(test)]
+mod tests;
