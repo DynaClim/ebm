@@ -45,6 +45,14 @@ impl Universe {
         Self::default()
     }
 
+    pub fn new_from(planet: Planet, initial_temperatures: Vec<f64>) -> Self {
+        Self {
+            planet,
+            initial_temperatures,
+            ..Self::default()
+        }
+    }
+
     pub fn initialise(&mut self) -> Result<()> {
         let system_size = self.initial_temperatures.len();
         self.latitude = Trig::new_vec(system_size);
@@ -65,7 +73,7 @@ impl Universe {
     //TODO Sid reference this function
     pub fn derive(&mut self, time: f64, temperatures: &[f64], d_temp: &mut [f64]) -> Result<()> {
         // First (K rad^-1) and second (K rad^-2) derivative of the temperature (K rad^-1)
-        self.d2t_dx2(temperatures);
+        self.temperature_derivative(temperatures);
 
         // Compute the sink
         for (olr, temp) in izip!(&mut self.sink, temperatures) {
@@ -93,11 +101,7 @@ impl Universe {
             &self.sink,
             temperatures
         ) {
-            *outval = self.planet.heat_capacity(*temp_i) * (
-                source_i 
-                + transp_i
-                - sink_i
-                );
+            *outval = self.planet.heat_capacity(*temp_i) * (source_i + transp_i - sink_i);
         }
 
         Ok(())
@@ -127,9 +131,7 @@ impl Universe {
                 if (abs!(lat.rad) + decl_tmp) < 0.0 {
                     let hour_angle = acos!(-lat.tan * decl.tan);
                     hour_angle * lat.sin * decl.sin + sin!(hour_angle) * lat.cos * decl.cos
-                } else if lat.rad.is_normal() && (lat.rad.signum() == decl.rad.signum()) {
-                    // check if lat.rad * decl.rad > 0.0, but since we don't care about
-                    // the result, we can infer if the product would be positive.
+                } else if lat.rad * decl.rad > 0.0 {
                     PI * lat.sin * decl.sin
                 } else {
                     0.0
@@ -142,30 +144,69 @@ impl Universe {
         Ok(())
     }
 
-    // Computation of the second derivative of the temperature as a function of the sine of latitude (cf 1D time-dependent diffusion equation).
+    fn first_temperature_derivative(
+        temp_prev: f64,
+        temp_next: f64,
+        lat_prev: f64,
+        lat_next: f64,
+    ) -> f64 {
+        (temp_next - temp_prev) / (lat_next - lat_prev)
+    }
+
+    fn second_temperature_derivative(
+        temp_prev: f64,
+        temp: f64,
+        temp_next: f64,
+        lat_prev: f64,
+        lat_next: f64,
+    ) -> f64 {
+        4. * (temp_next - (2. * temp) + temp_prev) / (lat_next - lat_prev).powi(2)
+    }
+
+    // Computation of the first and second derivative of the temperature as a function of the sine of latitude (cf 1D time-dependent diffusion equation).
     // Spiegel et al. 2008
-    fn d2t_dx2(&mut self, temperatures: &[f64]) {
+    fn temperature_derivative(&mut self, temperatures: &[f64]) {
         let temp_len = temperatures.len();
-        assert!(temp_len == self.latitude.len() && temp_len == self.dx2.len());
-        let temperatures = &temperatures[..temp_len];
-        let latitude = &self.latitude[..temp_len];
-        let dx = &mut self.dx[..temp_len];
-        let dx2 = &mut self.dx2[..temp_len];
+        assert!(
+            temp_len == self.latitude.len()
+                && temp_len == self.dx.len()
+                && temp_len == self.dx2.len()
+        );
 
-        dx2[0] = 4. * (2. * temperatures[1] - (2. * temperatures[0]))
-            / (2. * (latitude[1].rad - latitude[0].rad)).powi(2);
+        for (dx, dx2, temperature_window, latitude_window) in izip!(
+            &mut self.dx[1..temp_len],
+            &mut self.dx2[1..temp_len],
+            temperatures.windows(3),
+            self.latitude.windows(3),
+        ) {
+            let [temp_prev, temp, temp_next] = temperature_window else {
+                unreachable!();
+            };
+            let [lat_prev, _, lat_next] = latitude_window else {
+                unreachable!();
+            };
 
-        for i in 1..temp_len - 1 {
-            dx[i] = (temperatures[i + 1] - temperatures[i - 1])
-                / (latitude[i + 1].rad - latitude[i - 1].rad);
-
-            dx2[i] = 4. * (temperatures[i + 1] - (2. * temperatures[i]) + temperatures[i - 1])
-                / (latitude[i + 1].rad - latitude[i - 1].rad).powi(2);
+            *dx = Self::first_temperature_derivative(
+                *temp_prev,
+                *temp_next,
+                lat_prev.rad,
+                lat_next.rad,
+            );
+            *dx2 = Self::second_temperature_derivative(
+                *temp_prev,
+                *temp,
+                *temp_next,
+                lat_prev.rad,
+                lat_next.rad,
+            );
         }
 
-        dx2[temp_len - 1] = 4.
+        self.dx2[0] = 4. * (2. * temperatures[1] - (2. * temperatures[0]))
+            / (2. * (self.latitude[1].rad - self.latitude[0].rad)).powi(2);
+
+        self.dx2[temp_len - 1] = 4.
             * (2. * temperatures[temp_len - 2] - (2. * temperatures[temp_len - 1]))
-            / (2. * (latitude[temp_len - 1].rad - latitude[temp_len - 2].rad)).powi(2);
+            / (2. * (self.latitude[temp_len - 1].rad - self.latitude[temp_len - 2].rad)).powi(2);
     }
 }
 
@@ -233,26 +274,26 @@ impl Source {
     }
 }
 
-// TODO complete documentation of these variables
 #[derive(Deserialize, Serialize, Clone, Debug, Default)]
 #[serde(deny_unknown_fields)]
 pub struct Planet {
     /// Planet albedo at low temperature, no unit
     /// Albedo of the surface of the planet below the temperature of water phase transition
-    /// Gilmore 2014
+    /// (combined effect of ice/snow and clouds at low temperature)
     albedo_low_temperature: f64,
     /// Planet albedo at high temperature, no unit
     /// Albedo of the surface of the planet above the temperature of water phase transition
-    /// Gilmore 2014
+    /// (effective albedo of clouds and surface at high temperature)
     albedo_high_temperature: f64,
     /// Temperarure of the center of the albedo transition (between high a low values) (K)
-    /// Gilmore 2014
-    /// TODO Write this comment elsewhere: We suppose 1 bar atm and take 268 K according to the considerations of Spiegel et al. 2008.
     temperature_centre_transition: f64,
-    /// Temperature range of the transition of albedo around water phase transition (K)
-    /// Gilmore 2014
-    /// TODO Write this comment elsewhere: We take 25 K as for the Earth in Gilmore 2014
+    /// Temperature range of the transition of albedo around phase transition (K)
     temperature_width_transition: f64,
+    // Internal cache
+    #[serde(skip)]
+    gilmore_albedo_term1: f64,
+    #[serde(skip)]
+    gilmore_albedo_term2: f64,
 
     /// Diurnally average the insolation factor of the planet.
     /// Hartmann 2016
@@ -278,19 +319,16 @@ pub struct Planet {
     /// Proportion of the planet's surface that is aqua, no unit. Note [`Planet.land_fraction`] + [`Planet.water_fraction`] must equal 1.
     water_fraction: f64,
 
-    // Calculated internally as 1. / (water mass heat capacity + land mass heat capacity)
+    // Calculated internally
     #[serde(skip)]
     heat_capacity_reciprocal: f64,
-    #[serde(skip)]
-    gilmore_albedo_term1: f64,
-    #[serde(skip)]
-    gilmore_albedo_term2: f64,
 }
 
 impl Planet {
     pub fn new() -> Self {
         Self::default()
     }
+
     fn initialise(&mut self) -> Result<()> {
         #[allow(clippy::float_cmp)]
         // User supplied fractions should equal exactly 1.0.
@@ -302,6 +340,7 @@ impl Planet {
                 self.land_fraction + self.water_fraction
             );
         }
+
         // Correct the diurnally averaged insolation (W m^-2) for the Earth at 1 AU to account for the insolation received
         // by a planet located at TRAPPIST-1e semi-major axis and orbiting a Sun with weaker irradiation.
         // TRAPPIST-1e irradiation: Gillon et al. 2017
@@ -313,13 +352,13 @@ impl Planet {
 
         self.heat_capacity_reciprocal = 1.
             / (self.water_fraction * OCEAN_HEAT_CAPACITY + self.land_fraction * LAND_HEAT_CAPACITY);
- 
-        // albedo_low_temperature:  combined effect of ice/snow and clouds at low temperature, no unit
-        // albedo_high_temperature: effective albedo of clouds and surface at high temperature, no unit
-        self.gilmore_albedo_term1 = f64::midpoint(self.albedo_low_temperature, self.albedo_high_temperature);
-        self.gilmore_albedo_term2 = (self.albedo_low_temperature - self.albedo_high_temperature) / 2.;
 
-       // Convert obliquity from degrees to radians.
+        self.gilmore_albedo_term1 =
+            f64::midpoint(self.albedo_low_temperature, self.albedo_high_temperature);
+        self.gilmore_albedo_term2 =
+            (self.albedo_low_temperature - self.albedo_high_temperature) / 2.;
+
+        // Convert obliquity from degrees to radians.
         match &mut self.obliquity {
             Source::Constant(initial) => {
                 *initial = initial.to_radians();
@@ -346,18 +385,38 @@ impl Planet {
         Ok(())
     }
 
-    // Calculates planet albedo according to Gilmore 2014, Equation 5.
-    // The hyperbolic tangent has been replaced with an approximation for performance.
+    // Gilmore 2014, equation 5, modified with a pade approximation of tanh(x)
+    // for performance (~1.6x speedup)
+    // https://mathr.co.uk/blog/2017-09-06_approximating_hyperbolic_tangent.html
+    //
+    // In general, tanh⁡(x) asymptotically tends towards ± 1.
+    // x ≈ 0 => tanh(x) ≈ x
+    // and the further x is from 0, the closer tanh(x) is to 1.
+    // x ≈ ±3 => tanh⁡(x) ≈ ± 0.9950 (very close to the asymptodes).
+    //
+    // So a tanh approximation only needs to be accurate between (-3, 3)
+    // and we clamp x to ± 1 outside of this range.
+    //
+    // In practice, we simplify the output of the albdeo function
+    // and clamp directly on to `albedo_low_temperature` and `albedo_high_temperature`
+    // outside of `temperature_centre_transition` ± 3 * `temperature_width_transition` range
+    // and use the pade tanh approximation inside the (-3, 3) range
+    // (which makes the effective transition width ≈ 6ΔT).
     fn albedo(&self, temperature: f64) -> f64 {
-        // Coefficients can be tuned to account for the spectral type of the star.
-        // planet.temperature_centre_transition: center of the smooth transition between the two constant values (K)
-        // planet.temperature_width_transition:  width of the transition between the two constant values (K)
-        self.gilmore_albedo_term1
-            - self.gilmore_albedo_term2
-                * tanh!(
-                    (temperature - self.temperature_centre_transition)
-                        / self.temperature_width_transition
-                )
+        let x =
+            (temperature - self.temperature_centre_transition) / self.temperature_width_transition;
+        if x < -3. {
+            // low clamp
+            self.albedo_low_temperature
+        } else if x > 3. {
+            // high clamp
+            self.albedo_high_temperature
+        } else {
+            // tanh approximation
+            let y = x * ((27. + x.powi(2)) / (27. + 9. * x.powi(2)));
+
+            self.gilmore_albedo_term1 - y * self.gilmore_albedo_term2
+        }
     }
 
     fn eccentricity(&self, time: f64) -> Result<f64> {
@@ -402,6 +461,7 @@ impl Planet {
                 .context("Outgoing Longwave Radiation")?;
             y
         };
+
         Ok(olr)
     }
 
@@ -422,13 +482,12 @@ impl Planet {
 
     // 1D time-dependent diffusion equation, Spiegel et al. 2008
     // Calculates variation of the temperature as a function of time (K s^-1)
-    fn energy_transport(&self, dx_i: f64, dx2_i: f64, lat_tan: f64) -> f64 {
-        self.fiducial_diffusion_coefficient * (dx2_i - (lat_tan * dx_i))
+    fn energy_transport(&self, dx: f64, dx2: f64, lat_tan: f64) -> f64 {
+        self.fiducial_diffusion_coefficient * (dx2 - (lat_tan * dx))
     }
-
 }
 
-// Trigs and associated trigonometric values.
+// Radian and associated trigonometric values.
 #[derive(Deserialize, Serialize, Clone, Debug, Default, PartialEq)]
 struct Trig {
     rad: f64,
@@ -447,7 +506,7 @@ impl Trig {
         }
     }
 
-    // Create the latitude array and precompute all the trigonometric values
+    // Create the array and precompute all the trigonometric values
     fn new_vec(system_size: usize) -> Vec<Self> {
         LinSpace::new(90.0_f64, -90.0_f64, system_size)
             .map(|x| Self::new(x.to_radians()))
@@ -467,5 +526,5 @@ impl Trig {
 // Turbet et al. 2022, https://doi.org/10.1038/s41586-021-03873-w
 // Williams & Kasting 1997, https://doi.org/10.1006/icar.1997.5759
 
-#[cfg(test)]
+#[cfg(any(test, feature = "divan"))]
 mod tests;

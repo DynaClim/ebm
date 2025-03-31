@@ -55,5 +55,5 @@ impl System for EnergyBalanceModel {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "divan"))]
 mod tests;

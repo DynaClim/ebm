@@ -1,12 +1,12 @@
 use super::*;
-use pretty_assertions::assert_eq;
+//use pretty_assertions::assert_eq;
 use sci_file::{OutputFile, deserialize_json_from_path};
 use serde::{Deserialize, Serialize};
-use simulation::InputConfig;
-use simulation::{Integrator, System};
+use simulation::{InputConfig, Integrator, System};
 use std::path::Path;
 use std::path::PathBuf;
 
+#[derive(Clone)]
 struct Test {
     pub data: Universe,
 }
@@ -39,9 +39,9 @@ impl System for Test {
     }
 }
 
-fn test_simulation(config: PathBuf) -> Vec<f64> {
+fn build_simulation(config_path: PathBuf) -> InputConfig<Universe> {
     // Parse the config file.
-    let mut config: InputConfig<Universe> = deserialize_json_from_path(&config).unwrap();
+    let mut config: InputConfig<Universe> = deserialize_json_from_path(&config_path).unwrap();
     config.initial_time *= SECONDS_IN_YEAR;
     config.final_time *= SECONDS_IN_YEAR;
 
@@ -49,15 +49,24 @@ fn test_simulation(config: PathBuf) -> Vec<f64> {
 
     // Initial values for the integrator.
     let y = config.universe.initial_temperatures();
-    let mut system = Test {
-        data: config.universe,
-    };
     config
         .integrator
         .initialise(config.initial_time, config.final_time, &y);
 
+    config
+}
+
+#[allow(dead_code)]
+fn test_simulation(config: PathBuf) -> Vec<f64> {
+    let mut config = build_simulation(config);
+
+    let mut system = Test {
+        data: config.universe,
+    };
+
     // Run the full integration.
-    let _ = config.integrator.integrate(&mut system).unwrap();
+    let stats = config.integrator.integrate(&mut system).unwrap();
+    dbg!(stats);
 
     // Collect the final y values.
     config.integrator.y().to_vec()
@@ -70,6 +79,7 @@ struct Compare {
     expected: Vec<f64>,
 }
 
+#[allow(dead_code)]
 fn compare_or_create(path: impl AsRef<Path> + std::fmt::Display, result: &[f64]) {
     if let Ok(saved_data) = deserialize_json_from_path::<Compare>(&path) {
         // Saved file exists, compare the results.
@@ -89,4 +99,19 @@ fn compare_or_create(path: impl AsRef<Path> + std::fmt::Display, result: &[f64])
 fn example_300k_1year() {
     let result = test_simulation("examples/300K_1year.json.conf".into());
     compare_or_create("examples/300K_1year.expected", &result);
+}
+
+#[cfg(feature = "divan")]
+#[divan::bench]
+// This is a test case for performance benchmarking.
+fn bench_300k_1year_145d(bencher: divan::Bencher) {
+    // Load the config file and create the simulation/integrator once.
+    let config = build_simulation("examples/300K_1year.json.conf".into());
+
+    let system = Test {
+        data: config.universe,
+    };
+
+    // The simulation mutates the integrator, so clone it for each iteration of the bench test.
+    bencher.bench(|| config.integrator.clone().integrate(&mut system.clone()));
 }

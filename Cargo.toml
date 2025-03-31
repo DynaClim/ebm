@@ -1,7 +1,7 @@
 cargo-features = ["profile-rustflags"]
 
 [package]
-name = "EBM"
+name = "ebm"
 version = "0.1.0"
 authors = ["Tim"]
 edition = "2024"
@@ -17,6 +17,13 @@ path = "src/lib.rs"
 name = "ebm"
 path = "src/main.rs"
 
+[profile.dev]
+opt-level = 3
+debug = true
+
+[dev-dependencies]
+pretty_assertions = "1.4.1"
+
 [profile.release]
 opt-level = 3
 debug = true
@@ -26,7 +33,7 @@ rustflags = ["-C", "target-cpu=native"]
 
 [dependencies]
 anyhow = "1.0.97"
-log = {version = "0.4.26", features = ["std"]}
+log = {version = "0.4.27", features = ["std"]}
 serde = {version = "1.0.219", features = ["derive"]}
 serde_json = { version = "1.0.140", features = ["float_roundtrip"] }
 thiserror = "2.0.12"
@@ -36,9 +43,19 @@ sci-file = { git = "https://github.com/DynaClim/sci-file.git" }
 math-macros = { git = "https://github.com/DynaClim/math-macros.git" }
 rayon = "1.10.0"
 itertools = "0.14.0"
+divan = { version = "0.1.17", optional = true }
 
-[dev-dependencies]
-pretty_assertions = "1.4.1"
+# This feature is purely for being able to execute divan benches.
+# It is the easiest way to use divan without compiling benches
+# into release builds.
+# See: https://github.com/nvzqz/divan/issues/61#issuecomment-2438845647
+[features]
+divan = ["dep:divan"]
+
+[[bench]]
+name = "divan"
+harness = false
+required-features = ["divan"]
 
 [lints.rust]
 unsafe_code = "forbid"

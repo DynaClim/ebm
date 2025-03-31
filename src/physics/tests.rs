@@ -1,5 +1,5 @@
 use super::*;
-use pretty_assertions::assert_eq;
+//use pretty_assertions::assert_eq;
 
 fn test_universe(system_size: usize) -> Universe {
     let planet = test_planet();
@@ -128,156 +128,10 @@ fn test_planet() -> Planet {
 
 #[test]
 fn test_derive() {
-    let system_size = 145;
+    let system_size = 5;
     let mut universe = test_universe(system_size);
     let temperatures = vec![300.0; system_size];
-    let expected = vec![
-        -1.0929212030241933e-6,
-        -1.0930729629707319e-6,
-        -1.093528170580833e-6,
-        -1.0942866092003278e-6,
-        -1.0953479178535102e-6,
-        -1.0887078913570256e-6,
-        -1.0637267447247274e-6,
-        -1.0323334581735836e-6,
-        -9.977062561077475e-7,
-        -9.612271575049824e-7,
-        -9.236395121306995e-7,
-        -8.85391559161295e-7,
-        -8.467755362617017e-7,
-        -8.079936614291369e-7,
-        -7.691927940993816e-7,
-        -7.304840310426266e-7,
-        -6.91954426511948e-7,
-        -6.536743241100115e-7,
-        -6.157021158883917e-7,
-        -5.780874285992335e-7,
-        -5.408733139425658e-7,
-        -5.040977888118208e-7,
-        -4.677949401179382e-7,
-        -4.319957311781519e-7,
-        -3.96728599371693e-7,
-        -3.620199051403778e-7,
-        -3.278942733895788e-7,
-        -2.943748558586123e-7,
-        -2.6148353466945846e-7,
-        -2.2924108156409897e-7,
-        -1.976672833923414e-7,
-        -1.6678104163504292e-7,
-        -1.366004517676334e-7,
-        -1.0714286683905519e-7,
-        -7.842494859655515e-8,
-        -5.0462708715202896e-8,
-        -2.3271542115226654e-8,
-        3.133746083372893e-9,
-        2.873891874907617e-8,
-        5.353028910265762e-8,
-        7.749470648432436e-8,
-        1.0061954490370564e-7,
-        1.2289269387114852e-7,
-        1.4430255110256908e-7,
-        1.6483801676452594e-7,
-        1.844884889856563e-7,
-        2.0324386040831198e-7,
-        2.2109451559277703e-7,
-        2.3803132911772694e-7,
-        2.540456642460837e-7,
-        2.6912937204634586e-7,
-        2.8327479087667125e-7,
-        2.9647474615323987e-7,
-        3.0872255033625393e-7,
-        3.200120030768028e-7,
-        3.3033739147609603e-7,
-        3.3969349041552673e-7,
-        3.480755629219179e-7,
-        3.5547936053729053e-7,
-        3.619011236667556e-7,
-        3.6733758188177926e-7,
-        3.717859541591939e-7,
-        3.7524394903906177e-7,
-        3.7770976468682943e-7,
-        3.7918208884728615e-7,
-        3.7966009867963953e-7,
-        3.7914346046464146e-7,
-        3.776323291760973e-7,
-        3.7512734791040516e-7,
-        3.7162964716891265e-7,
-        3.671408439889702e-7,
-        3.6166304092052236e-7,
-        3.5519882484602633e-7,
-        3.477512656423574e-7,
-        3.3932391468421353e-7,
-        3.2992080318935303e-7,
-        3.195464404068335e-7,
-        3.082058116502339e-7,
-        2.9590437617870065e-7,
-        2.826480649295277e-7,
-        2.684432781069144e-7,
-        2.532968826325165e-7,
-        2.3721620946448594e-7,
-        2.2020905079283574e-7,
-        2.022836571202642e-7,
-        1.8344873423897876e-7,
-        1.637134401156705e-7,
-        1.4308738169856863e-7,
-        1.2158061166258755e-7,
-        9.920362511089927e-8,
-        7.596735625397604e-8,
-        5.188317509027091e-8,
-        2.6962884116343642e-8,
-        1.2187150984778917e-9,
-        -2.533667405717984e-8,
-        -5.269020229305691e-8,
-        -8.08283681973139e-8,
-        -1.097372525516257e-7,
-        -1.3940252056160466e-7,
-        -1.698094236900977e-7,
-        -2.0094280099934272e-7,
-        -2.3278707989078114e-7,
-        -2.653262761104364e-7,
-        -2.9854399286227144e-7,
-        -3.324234188406924e-7,
-        -3.6694732495483607e-7,
-        -4.020980594695939e-7,
-        -4.3785754122889356e-7,
-        -4.742072505523375e-7,
-        -5.111282173025377e-7,
-        -5.486010055015864e-7,
-        -5.866056937233456e-7,
-        -6.251218502932062e-7,
-        -6.641285020744297e-7,
-        -7.036040952906211e-7,
-        -7.435264464002536e-7,
-        -7.838726804634282e-7,
-        -8.246191536695003e-7,
-        -8.657413556495617e-7,
-        -9.072137857679996e-7,
-        -9.490097956073775e-7,
-        -9.911013870839395e-7,
-        -1.0334589516826783e-6,
-        -1.0760509306022688e-6,
-        -1.1188433672401074e-6,
-        -1.161799310961252e-6,
-        -1.2048780120726125e-6,
-        -1.24803381829951e-6,
-        -1.2912146357778927e-6,
-        -1.3343597399812305e-6,
-        -1.3773965905789886e-6,
-        -1.4202360733828293e-6,
-        -1.462765169460328e-6,
-        -1.504835235901339e-6,
-        -1.5462424107709895e-6,
-        -1.5866929527858255e-6,
-        -1.625737260185704e-6,
-        -1.6626307623047571e-6,
-        -1.695990361529139e-6,
-        -1.7226368975963594e-6,
-        -1.7306405976542751e-6,
-        -1.7306405976542751e-6,
-        -1.7306405976542751e-6,
-        -1.7306405976542751e-6,
-        -1.7306405976542751e-6,
-    ];
+    let expected = vec![300.; system_size];
     let mut result = vec![0.0; system_size];
     let time = 1234567.;
     universe.derive(time, &temperatures, &mut result).unwrap();
@@ -288,29 +142,19 @@ fn test_derive() {
 fn test_insolation() {
     panic!();
 }
-/*
+
 #[test]
-fn test_energy_transport() {
-    let system_size = 5;
-    let temperatures = vec![300.; system_size];
-    let mut universe = test_universe(system_size);
-    energy_transport(&temperatures);
-    let expected = vec![1., 2., 3., 4., 5.];
-    assert_eq!(expected, universe.transport);
-}
-*/
-#[test]
-fn test_d2t_dx2() {
+fn test_temperature_derivatives() {
     let system_size = 5;
     let temperatures = vec![300.; system_size];
     let mut universe = test_universe(system_size);
 
     // first and second derivatives
-    let expected_1 = vec![1., 2., 3., 4., 5.];
-    let expected_2 = vec![1., 2., 3., 4., 5.];
-    universe.d2t_dx2(&temperatures);
-    assert_eq!(expected_1, universe.dx);
-    assert_eq!(expected_2, universe.dx2);
+    let expected_first = vec![1., 2., 3., 4., 5.];
+    let expected_second = vec![1., 2., 3., 4., 5.];
+    universe.temperature_derivative(&temperatures);
+    assert_eq!(expected_first, universe.dx);
+    assert_eq!(expected_second, universe.dx2);
 }
 
 #[test]
@@ -349,27 +193,54 @@ fn test_stellar_longitude() {
 }
 
 // Planet tests
-/*
 #[test]
 fn test_merged_ir_cooling() {
-    let system_size = 5;
-    let temperatures = vec![300.; system_size];
+    let temperature = 300.;
     let planet = test_planet();
-    let mut result = vec![0.0; system_size];
-    planet.merged_ir_cooling(&temperatures, &mut result).unwrap();
+    let result = planet.merged_ir_cooling(temperature).unwrap();
 
-    let expected = vec![1., 2., 3., 4., 5.];
+    let expected = 5.;
     assert_eq!(expected, result);
 }
+
 #[test]
 fn test_heat_capacity() {
-    let system_size = 5;
-    let temperatures = vec![300.; system_size];
+    let temperature = 300.;
     let planet = test_planet();
-    let mut result = vec![0.0; system_size];
-    planet.heat_capacity(&temperatures, &mut result).unwrap();
+    let result = planet.heat_capacity(temperature);
 
-    let expected = vec![1., 2., 3., 4., 5.];
+    let expected = 5.;
     assert_eq!(expected, result);
 }
-*/
+
+#[test]
+fn test_energy_transport() {
+    let dx = 0.;
+    let dx2 = 0.;
+    let lat_tan = 0.;
+    let planet = test_planet();
+    let result = planet.energy_transport(dx, dx2, lat_tan);
+    let expected = 5.;
+    assert_eq!(expected, result);
+}
+
+// Benches
+#[cfg(feature = "divan")]
+#[divan::bench]
+fn bench_stellar_longitude(bencher: divan::Bencher) {
+    let planet = test_planet();
+    let temperature = 300.;
+    bencher.bench(|| planet.stellar_longitude(temperature));
+}
+
+#[cfg(feature = "divan")]
+#[divan::bench]
+fn bench_albedo(bencher: divan::Bencher) {
+    let planet = test_planet();
+    let temperature = 300.;
+    // Warmup
+    for _ in 0..256_000 {
+        let _ = planet.albedo(temperature);
+    }
+    bencher.bench(|| planet.albedo(temperature));
+}

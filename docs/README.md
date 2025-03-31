@@ -96,3 +96,11 @@ The output data is available in `/output/run_n/temperature.jsonl`
 - lib.rs: Specifies the structure of the `Universe` for the config file and implements the `Integrator::System` trait required by the integrator.
 - main.rs: Robust example of using the ebm `lib` crate.
 - physics.rs: Public interface is through the `Universe` struct, which provides a `derive()` method used at every iteration of the integrator (`time` and `temperatures`), to solve the ODEs.
+
+## Benchmarking
+
+Benchmarking is handled by divan:
+
+```bash
+cargo bench --features divan
+```
