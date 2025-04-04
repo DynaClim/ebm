@@ -14,7 +14,7 @@ const PERIHELION_LONGTITUDE_RAD: f64 = PERIHELION_LONGTITUDE_DEG.to_radians();
 
 /// Contains all static data required for calculation of physics in this module.
 /// Provides the derivation function [derive] as the public interface.
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, Default)]
 #[serde(deny_unknown_fields)]
 pub struct Universe {
     /// User specified planetary parameters
@@ -61,17 +61,26 @@ impl Universe {
     //TODO Sid reference this function
     pub fn derive(&mut self, time: f64, temperatures: &[f64], d_temp: &mut [f64]) -> Result<()> {
         // First (K rad^-1) and second (K rad^-2) derivative of the temperature (K rad^-1)
-        self.d2t_dx2(temperatures);
+        self.temperature_derivative(temperatures);
+
         // Compute the sink
-        self.planet
-            .merged_ir_cooling(temperatures, &mut self.sink)?;
+        for (olr, temp) in izip!(&mut self.sink, temperatures) {
+            *olr = self.planet.merged_ir_cooling(*temp)?;
+        }
 
         // Compute the current albedo for each latitude
-        self.planet.albedo(temperatures, &mut self.albedos);
+        for (albedo, temp) in izip!(&mut self.albedos, temperatures) {
+            *albedo = self.planet.albedo(*temp);
+        }
 
         // Compute the source
         self.insolation(time)?;
-        self.energy_transport();
+
+        for (transp, dx_i, dx2_i, lat) in
+            izip!(&mut self.transport, &self.dx, &self.dx2, &self.latitude)
+        {
+            *transp = self.planet.energy_transport(*dx_i, *dx2_i, lat.tan);
+        }
 
         for (outval, source_i, transp_i, sink_i, temp_i) in izip!(
             d_temp,
@@ -110,9 +119,7 @@ impl Universe {
                 if (abs!(lat.rad) + decl_tmp) < 0.0 {
                     let hour_angle = acos!(-lat.tan * decl.tan);
                     hour_angle * lat.sin * decl.sin + sin!(hour_angle) * lat.cos * decl.cos
-                } else if lat.rad.is_normal() && (lat.rad.signum() == decl.rad.signum()) {
-                    // check if lat.rad * decl.rad > 0.0, but since we don't care about
-                    // the result, we can infer if the product would be positive.
+                } else if lat.rad * decl.rad > 0.0 {
                     PI * lat.sin * decl.sin
                 } else {
                     0.0
@@ -125,40 +132,69 @@ impl Universe {
         Ok(())
     }
 
-    // 1D time-dependent diffusion equation, Spiegel et al. 2008
-    // Calculates variation of the temperature as a function of time (K s^-1)
-    fn energy_transport(&mut self) {
-        for (transp, dx_i, dx2_i, lat) in
-            izip!(&mut self.transport, &self.dx, &self.dx2, &self.latitude)
-        {
-            *transp = self.planet.fiducial_diffusion_coefficient * (dx2_i - (lat.tan * dx_i));
-        }
+    fn first_temperature_derivative(
+        temp_prev: f64,
+        temp_next: f64,
+        lat_prev: f64,
+        lat_next: f64,
+    ) -> f64 {
+        (temp_next - temp_prev) / (lat_next - lat_prev)
     }
 
-    // Computation of the second derivative of the temperature as a function of the sine of latitude (cf 1D time-dependent diffusion equation).
+    fn second_temperature_derivative(
+        temp_prev: f64,
+        temp: f64,
+        temp_next: f64,
+        lat_prev: f64,
+        lat_next: f64,
+    ) -> f64 {
+        4. * (temp_next - (2. * temp) + temp_prev) / (lat_next - lat_prev).powi(2)
+    }
+
+    // Computation of the first and second derivative of the temperature as a function of the sine of latitude (cf 1D time-dependent diffusion equation).
     // Spiegel et al. 2008
-    fn d2t_dx2(&mut self, temperatures: &[f64]) {
+    fn temperature_derivative(&mut self, temperatures: &[f64]) {
         let temp_len = temperatures.len();
-        assert!(temp_len == self.latitude.len() && temp_len == self.dx2.len());
-        let temperatures = &temperatures[..temp_len];
-        let latitude = &self.latitude[..temp_len];
-        let dx = &mut self.dx[..temp_len];
-        let dx2 = &mut self.dx2[..temp_len];
+        assert!(
+            temp_len == self.latitude.len()
+                && temp_len == self.dx.len()
+                && temp_len == self.dx2.len()
+        );
 
-        dx2[0] = 4. * (2. * temperatures[1] - (2. * temperatures[0]))
-            / (2. * (latitude[1].rad - latitude[0].rad)).powi(2);
+        for (dx, dx2, temperature_window, latitude_window) in izip!(
+            &mut self.dx[1..temp_len],
+            &mut self.dx2[1..temp_len],
+            temperatures.windows(3),
+            self.latitude.windows(3),
+        ) {
+            let [temp_prev, temp, temp_next] = temperature_window else {
+                unreachable!();
+            };
+            let [lat_prev, _, lat_next] = latitude_window else {
+                unreachable!();
+            };
 
-        for i in 1..temp_len - 1 {
-            dx[i] = (temperatures[i + 1] - temperatures[i - 1])
-                / (latitude[i + 1].rad - latitude[i - 1].rad);
-
-            dx2[i] = 4. * (temperatures[i + 1] - (2. * temperatures[i]) + temperatures[i - 1])
-                / (latitude[i + 1].rad - latitude[i - 1].rad).powi(2);
+            *dx = Self::first_temperature_derivative(
+                *temp_prev,
+                *temp_next,
+                lat_prev.rad,
+                lat_next.rad,
+            );
+            *dx2 = Self::second_temperature_derivative(
+                *temp_prev,
+                *temp,
+                *temp_next,
+                lat_prev.rad,
+                lat_next.rad,
+            );
         }
 
-        dx2[temp_len - 1] = 4.
+        self.dx2[0] = 4. * (2. * temperatures[1] - (2. * temperatures[0]))
+            / (2. * (self.latitude[1].rad - self.latitude[0].rad)).powi(2);
+
+        self.dx2[temp_len - 1] = 4.
             * (2. * temperatures[temp_len - 2] - (2. * temperatures[temp_len - 1]))
-            / (2. * (latitude[temp_len - 1].rad - latitude[temp_len - 2].rad)).powi(2);
+            / (2. * (self.latitude[temp_len - 1].rad - self.latitude[temp_len - 2].rad)).powi(2);
     }
 }
 
@@ -183,6 +219,12 @@ pub enum Source {
     },
     // Value interpolated from precomputed grid.
     Interpolate(Interpolator<f64>),
+}
+
+impl Default for Source {
+    fn default() -> Self {
+        Self::Constant(0.0)
+    }
 }
 
 impl Source {
@@ -220,26 +262,26 @@ impl Source {
     }
 }
 
-// TODO complete documentation of these variables
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, Default)]
 #[serde(deny_unknown_fields)]
 pub struct Planet {
     /// Planet albedo at low temperature, no unit
     /// Albedo of the surface of the planet below the temperature of water phase transition
-    /// Gilmore 2014
+    /// (combined effect of ice/snow and clouds at low temperature)
     albedo_low_temperature: f64,
     /// Planet albedo at high temperature, no unit
     /// Albedo of the surface of the planet above the temperature of water phase transition
-    /// Gilmore 2014
+    /// (effective albedo of clouds and surface at high temperature)
     albedo_high_temperature: f64,
     /// Temperarure of the center of the albedo transition (between high a low values) (K)
-    /// Gilmore 2014
-    /// TODO Write this comment elsewhere: We suppose 1 bar atm and take 268 K according to the considerations of Spiegel et al. 2008.
     temperature_centre_transition: f64,
-    /// Temperature range of the transition of albedo around water phase transition (K)
-    /// Gilmore 2014
-    /// TODO Write this comment elsewhere: We take 25 K as for the Earth in Gilmore 2014
+    /// Temperature range of the transition of albedo around phase transition (K)
     temperature_width_transition: f64,
+    // Internal cache
+    #[serde(skip)]
+    gilmore_albedo_term1: f64,
+    #[serde(skip)]
+    gilmore_albedo_term2: f64,
 
     /// Diurnally average the insolation factor of the planet.
     /// Hartmann 2016
@@ -264,7 +306,8 @@ pub struct Planet {
     land_fraction: f64,
     /// Proportion of the planet's surface that is aqua, no unit. Note [`Planet.land_fraction`] + [`Planet.water_fraction`] must equal 1.
     water_fraction: f64,
-    // Calculated internally as 1. / (water mass heat capacity + land mass heat capacity)
+
+    // Calculated internally
     #[serde(skip)]
     heat_capacity_reciprocal: f64,
 }
@@ -281,6 +324,7 @@ impl Planet {
                 self.land_fraction + self.water_fraction
             );
         }
+
         // Correct the diurnally averaged insolation (W m^-2) for the Earth at 1 AU to account for the insolation received
         // by a planet located at TRAPPIST-1e semi-major axis and orbiting a Sun with weaker irradiation.
         // TRAPPIST-1e irradiation: Gillon et al. 2017
@@ -292,6 +336,12 @@ impl Planet {
 
         self.heat_capacity_reciprocal = 1.
             / (self.water_fraction * OCEAN_HEAT_CAPACITY + self.land_fraction * LAND_HEAT_CAPACITY);
+
+        self.gilmore_albedo_term1 =
+            f64::midpoint(self.albedo_low_temperature, self.albedo_high_temperature);
+        self.gilmore_albedo_term2 =
+            (self.albedo_low_temperature - self.albedo_high_temperature) / 2.;
+
         // Convert obliquity from degrees to radians.
         match &mut self.obliquity {
             Source::Constant(initial) => {
@@ -323,10 +373,10 @@ impl Planet {
     // for performance (~1.6x speedup)
     // https://mathr.co.uk/blog/2017-09-06_approximating_hyperbolic_tangent.html
     //
-    // In general, tanh(x) asymptotically tends towards ± 1.
+    // In general, tanh⁡(x) asymptotically tends towards ± 1.
     // x ≈ 0 => tanh(x) ≈ x
     // and the further x is from 0, the closer tanh(x) is to 1.
-    // x ≈ ±3 => tanh(x) ≈ ± 0.9950 (very close to the asymptodes).
+    // x ≈ ±3 => tanh⁡(x) ≈ ± 0.9950 (very close to the asymptodes).
     //
     // So a tanh approximation only needs to be accurate between (-3, 3)
     // and we clamp x to ± 1 outside of this range.
@@ -336,23 +386,20 @@ impl Planet {
     // outside of `temperature_centre_transition` ± 3 * `temperature_width_transition` range
     // and use the pade tanh approximation inside the (-3, 3) range
     // (which makes the effective transition width ≈ 6ΔT).
-    fn albedo(&self, temperatures: &[f64], albedos: &mut [f64]) {
-        for (albedo, temp) in izip!(albedos, temperatures) {
-            let x = (temp - self.temperature_centre_transition) / self.temperature_width_transition;
+    fn albedo(&self, temperature: f64) -> f64 {
+        let x =
+            (temperature - self.temperature_centre_transition) / self.temperature_width_transition;
+        if x < -3. {
+            // low clamp
+            self.albedo_low_temperature
+        } else if x > 3. {
+            // high clamp
+            self.albedo_high_temperature
+        } else {
+            // tanh approximation
+            let y = x * ((27. + x.powi(2)) / (27. + 9. * x.powi(2)));
 
-            *albedo = if x < -3. {
-                // low clamp
-                self.albedo_low_temperature
-            } else if x > 3. {
-                // high clamp
-                self.albedo_high_temperature
-            } else {
-                // tanh approximation
-                let y = x * ((27. + x.powi(2)) / (27. + 9. * x.powi(2)));
-
-                (f64::midpoint(self.albedo_low_temperature, self.albedo_high_temperature))
-                    - ((self.albedo_low_temperature - self.albedo_high_temperature) / 2.) * y
-            };
+            self.gilmore_albedo_term1 - y * self.gilmore_albedo_term2
         }
     }
 
@@ -379,30 +426,27 @@ impl Planet {
     }
 
     // Calculates the outgoing longwave radiation of the planet as a function of its temperature.
-    fn merged_ir_cooling(&self, temperatures: &[f64], sink: &mut [f64]) -> Result<()> {
+    fn merged_ir_cooling(&self, temperature: f64) -> Result<f64> {
         // For T < 322.5 K:
         //      Modified Stefan-Boltzmann law to account for Earth's atmospheric composition, Dressing et al. 2010
         // For 322.5 < T < 787.2 K:
         //      Interpolation of GCM simulations, Chaverot et al. 2023
         // For 893.2 < T < 1055.9:
         //      Interpolation of GCM simulations, Turbet et al. 2022
-        for (olr, temp) in izip!(sink, temperatures) {
-            *olr = {
-                // The Stefan-Boltzmann relationship is not valid above 322.5 K
-                if *temp < 322.5 {
-                    // 0.5925 (no unit) is the coefficient accounting for atmospheric composition
-                    (STEFAN_BOLTZMANN * temp.powi(4))
-                        / (1. + (0.5925 * (temp / CRITICAL_TEMPERATURE).powi(3)))
-                } else {
-                    let (_x, y) = self
-                        .outgoing_longwave_radiation
-                        .interpolate(*temp)
-                        .context("Outgoing Longwave Radiation")?;
-                    y
-                }
-            };
-        }
-        Ok(())
+        // The Stefan-Boltzmann relationship is not valid above 322.5 K
+        let olr = if temperature < 322.5 {
+            // 0.5925 (no unit) is the coefficient accounting for atmospheric composition
+            (STEFAN_BOLTZMANN * temperature.powi(4))
+                / (1. + (0.5925 * (temperature / CRITICAL_TEMPERATURE).powi(3)))
+        } else {
+            let (_x, y) = self
+                .outgoing_longwave_radiation
+                .interpolate(temperature)
+                .context("Outgoing Longwave Radiation")?;
+            y
+        };
+
+        Ok(olr)
     }
 
     // Calculates effective surface heat capacity depending on the temperature and the surface type (ocean, land, ice, cold ice)
@@ -419,9 +463,15 @@ impl Planet {
             COLDICE_HEAT_CAPACITY_RECIPROCAL
         }
     }
+
+    // 1D time-dependent diffusion equation, Spiegel et al. 2008
+    // Calculates variation of the temperature as a function of time (K s^-1)
+    fn energy_transport(&self, dx: f64, dx2: f64, lat_tan: f64) -> f64 {
+        self.fiducial_diffusion_coefficient * (dx2 - (lat_tan * dx))
+    }
 }
 
-// Trigs and associated trigonometric values.
+// Radian and associated trigonometric values.
 #[derive(Deserialize, Serialize, Clone, Debug, Default, PartialEq)]
 struct Trig {
     rad: f64,
@@ -440,7 +490,7 @@ impl Trig {
         }
     }
 
-    // Create the latitude array and precompute all the trigonometric values
+    // Create the array and precompute all the trigonometric values
     fn new_vec(system_size: usize) -> Vec<Self> {
         LinSpace::new(90.0_f64, -90.0_f64, system_size)
             .map(|x| Self::new(x.to_radians()))
