@@ -319,20 +319,40 @@ impl Planet {
         Ok(())
     }
 
-    // Calculates planet albedo according to Gilmore 2014, Equation 5.
+    // Gilmore 2014, equation 5, modified with a pade approximation of tanh(x)
+    // for performance (~1.6x speedup)
+    // https://mathr.co.uk/blog/2017-09-06_approximating_hyperbolic_tangent.html
+    //
+    // In general, tanh(x) asymptotically tends towards ± 1.
+    // x ≈ 0 => tanh(x) ≈ x
+    // and the further x is from 0, the closer tanh(x) is to 1.
+    // x ≈ ±3 => tanh(x) ≈ ± 0.9950 (very close to the asymptodes).
+    //
+    // So a tanh approximation only needs to be accurate between (-3, 3)
+    // and we clamp x to ± 1 outside of this range.
+    //
+    // In practice, we simplify the output of the albdeo function
+    // and clamp directly on to `albedo_low_temperature` and `albedo_high_temperature`
+    // outside of `temperature_centre_transition` ± 3 * `temperature_width_transition` range
+    // and use the pade tanh approximation inside the (-3, 3) range
+    // (which makes the effective transition width ≈ 6ΔT).
     fn albedo(&self, temperatures: &[f64], albedos: &mut [f64]) {
-        // Coefficients can be tuned to account for the spectral type of the star.
-        // albedo_low_temperature:  combined effect of ice/snow and clouds at low temperature, no unit
-        // albedo_high_temperature: effective albedo of clouds and surface at high temperature, no unit
-        // planet.temperature_centre_transition: center of the smooth transition between the two constant values (K)
-        // planet.temperature_width_transition:  width of the transition between the two constant values (K)
         for (albedo, temp) in izip!(albedos, temperatures) {
-            *albedo = (f64::midpoint(self.albedo_low_temperature, self.albedo_high_temperature))
-                - ((self.albedo_low_temperature - self.albedo_high_temperature) / 2.)
-                    * tanh!(
-                        (temp - self.temperature_centre_transition)
-                            / self.temperature_width_transition
-                    );
+            let x = (temp - self.temperature_centre_transition) / self.temperature_width_transition;
+
+            *albedo = if x < -3. {
+                // low clamp
+                self.albedo_low_temperature
+            } else if x > 3. {
+                // high clamp
+                self.albedo_high_temperature
+            } else {
+                // tanh approximation
+                let y = x * ((27. + x.powi(2)) / (27. + 9. * x.powi(2)));
+
+                (f64::midpoint(self.albedo_low_temperature, self.albedo_high_temperature))
+                    - ((self.albedo_low_temperature - self.albedo_high_temperature) / 2.) * y
+            };
         }
     }
 
