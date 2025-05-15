@@ -2,7 +2,7 @@ cargo-features = ["profile-rustflags"]
 
 [package]
 name = "EBM"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Tim"]
 edition = "2024"
 description = "Some kind of simulation tool used by astrophysicsts for some kind of climate modelling."
@@ -25,17 +25,15 @@ codegen-units = 1
 rustflags = ["-C", "target-cpu=native"]
 
 [dependencies]
-anyhow = "1.0.97"
-log = {version = "0.4.26", features = ["std"]}
-serde = {version = "1.0.219", features = ["derive"]}
-serde_json = { version = "1.0.140", features = ["float_roundtrip"] }
-thiserror = "2.0.12"
-astro-const = { git = "https://github.com/DynaClim/astro-const.git" }
-simulation = { git = "https://github.com/DynaClim/simulation.git" }
-sci-file = { git = "https://github.com/DynaClim/sci-file.git" }
-math-macros = { git = "https://github.com/DynaClim/math-macros.git" }
-rayon = "1.10.0"
+anyhow = "1.0.98"
 itertools = "0.14.0"
+log = {version = "0.4.27", features = ["std"]}
+rayon = "1.10.0"
+serde = {version = "1.0.219", features = ["derive"]}
+astro-const = { git = "https://github.com/DynaClim/astro-const.git" }
+math-macros = { git = "https://github.com/DynaClim/math-macros.git" }
+sci-file = { git = "https://github.com/DynaClim/sci-file.git" }
+simulation = { git = "https://github.com/DynaClim/simulation.git" }
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"

@@ -18,25 +18,28 @@ const PERIHELION_LONGTITUDE_RAD: f64 = PERIHELION_LONGTITUDE_DEG.to_radians();
 #[serde(deny_unknown_fields)]
 pub struct Universe {
     /// User specified planetary parameters
+    #[serde(skip_serializing)]
     planet: Planet,
+    #[serde(default)]
+    time: f64,
     initial_temperatures: Vec<f64>,
 
     // Precomputed latitude arrays
-    #[serde(default)]
+    #[serde(skip)]
     latitude: Vec<Trig>,
 
     // Preallocated arrays, used as scratch for calculations.
-    #[serde(default)]
+    #[serde(skip)]
     albedos: Vec<f64>,
-    #[serde(default)]
+    #[serde(skip)]
     source: Vec<f64>,
-    #[serde(default)]
+    #[serde(skip)]
     transport: Vec<f64>,
-    #[serde(default)]
+    #[serde(skip)]
     sink: Vec<f64>,
-    #[serde(default)]
+    #[serde(skip)]
     dx: Vec<f64>,
-    #[serde(default)]
+    #[serde(skip)]
     dx2: Vec<f64>,
 }
 
@@ -53,9 +56,13 @@ impl Universe {
         self.planet.initialise()
     }
 
-    #[must_use]
     pub fn initial_temperatures(&self) -> Vec<f64> {
         self.initial_temperatures.clone()
+    }
+
+    pub fn update(&mut self, time: f64, temperatures: &[f64]) {
+        self.time = time;
+        self.initial_temperatures.copy_from_slice(temperatures);
     }
 
     //TODO Sid reference this function
