@@ -49,7 +49,7 @@ Set the planet properties into the configuration file(s) to the desired values a
 Simulations can be launched individually, or in batch mode. The user must specify the location of the input file(s) (`.conf`) and the desired output location (`output_directory`).
 
 #### Start a single simulation
-`ebm input_file.conf output_directory`
+`ebm input_file.conf output_directory --output-format jsonl`
 
 With input arguments:
 
@@ -59,7 +59,7 @@ With input arguments:
 #### Start multiple simulations (batch mode)
 Batch mode launches simulations in parallel.
 
-`ebm -b input_directory output_directory`
+`ebm -b input_directory output_directory --output-format jsonl`
 
 With input arguments:
 
@@ -75,7 +75,7 @@ Launching a simulation produces three output files:
 
 For example:
 ```bash
-ebm example.conf simulations
+ebm example.conf simulations --output-format jsonl
 ```
 will produce the following structure:
 (A `run_n` sub directory will be created for each simulation, with `n` as the smallest non pre-existing numerical suffix.)

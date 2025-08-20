@@ -5,7 +5,7 @@ fn test_universe(system_size: usize) -> Universe {
     let planet = test_planet();
     let mut universe = Universe::new();
     universe.planet = planet;
-    universe.initial_temperatures = vec![300.; system_size];
+    universe.temperatures = vec![300.; system_size];
     universe.initialise().unwrap();
     universe
 }

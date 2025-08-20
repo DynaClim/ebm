@@ -1,54 +1,20 @@
 use super::*;
 //use pretty_assertions::assert_eq;
-use sci_file::{OutputFile, deserialize_json_from_path};
-use serde::{Deserialize, Serialize};
-use simulation::{InputConfig, Integrator, System};
+use sci_file::{OutputWriter, read_json_from_file};
+use simulation::{Integrator, simulation::InputConfig};
 use std::path::Path;
 use std::path::PathBuf;
 
-#[derive(Clone)]
-struct Test {
-    pub data: Universe,
-}
-
-// Mock System implementation without writing any output.
-impl System for Test {
-    type Data = Universe;
-    type Output = OutputFile;
-
-    fn new(_: OutputFile, data: Universe) -> Self {
-        Self { data }
-    }
-
-    fn derive(
-        &mut self,
-        time: f64,
-        y: &[f64],
-        dy: &mut [f64],
-    ) -> Result<(), Box<(dyn std::error::Error + Send + Sync + 'static)>> {
-        self.data.derive(time, y, dy)?;
-        Ok(())
-    }
-
-    fn solout(
-        &mut self,
-        _time: f64,
-        _y: &[f64],
-    ) -> Result<(), Box<(dyn std::error::Error + Send + Sync + 'static)>> {
-        Ok(())
-    }
-}
-
 fn build_simulation(config_path: PathBuf) -> InputConfig<Universe> {
     // Parse the config file.
-    let mut config: InputConfig<Universe> = deserialize_json_from_path(&config_path).unwrap();
+    let mut config: InputConfig<Universe> = read_json_from_file(&config_path).unwrap();
     config.initial_time *= SECONDS_IN_YEAR;
     config.final_time *= SECONDS_IN_YEAR;
 
-    config.universe.initialise().unwrap();
+    config.system.initialise().unwrap();
 
     // Initial values for the integrator.
-    let y = config.universe.initial_temperatures();
+    let y = config.system.temperatures();
     config
         .integrator
         .initialise(config.initial_time, config.final_time, &y);
@@ -56,49 +22,49 @@ fn build_simulation(config_path: PathBuf) -> InputConfig<Universe> {
     config
 }
 
-#[allow(dead_code)]
-fn test_simulation(config: PathBuf) -> Vec<f64> {
+fn test_simulation(config: PathBuf) -> Universe {
     let mut config = build_simulation(config);
 
-    let mut system = Test {
-        data: config.universe,
-    };
-
     // Run the full integration.
-    let stats = config.integrator.integrate(&mut system).unwrap();
-    dbg!(stats);
-
-    // Collect the final y values.
-    config.integrator.y().to_vec()
+    let (x, y) = config.integrator.integrate(&mut config.system).unwrap();
+    config.system.update(x, y).unwrap();
+    config.system
 }
 
-// Float roundtrip in only supported in JSON (not CSV)
-// So store the expected output as JSON with one field.
-#[derive(Deserialize, Serialize)]
-struct Compare {
-    expected: Vec<f64>,
-}
-
-#[allow(dead_code)]
-fn compare_or_create(path: impl AsRef<Path> + std::fmt::Display, result: &[f64]) {
-    if let Ok(saved_data) = deserialize_json_from_path::<Compare>(&path) {
-        // Saved file exists, compare the results.
-        assert_eq!(saved_data.expected, result);
-    } else {
-        // Saved file does not exist, save the results.
-        let mut writer = OutputFile::new(&path).unwrap();
-        let result = Compare {
-            expected: result.to_vec(),
-        };
-        writer.write_json(&result).unwrap();
-        panic!("comparison file `{path}` did not exist, so it was created");
+fn compare_or_create(path: impl AsRef<Path> + std::fmt::Display, result: &Universe) {
+    match read_json_from_file::<Universe>(&path) {
+        Ok(expected) => {
+            // Saved file exists, compare the results.
+            // We roundtrip our `Universe` through serde before comparison
+            // to reset fields that are not serialized (serde skip_serializing)
+            // (i.e. interpolation data read from file, internal buffers).
+            let tmp = serde_json::to_string(&result).unwrap();
+            let result: Universe = serde_json::from_str(&tmp).unwrap();
+            assert_eq!(expected, result);
+        }
+        Err(err) => {
+            match err {
+                sci_file::Error::FileIo(_) => {
+                    // Saved file does not exist save the results.
+                    let mut writer = OutputWriter::new(&path).unwrap();
+                    writer.write(&result).unwrap();
+                    panic!("comparison file `{path}` did not exist, so it was created");
+                }
+                _ => {
+                    dbg!(&err);
+                    panic!(
+                        "the comparison file `{path}` is corrupt or has invalid structure. if it contains 'null' values, the value was probably NaN or inifinity"
+                    );
+                }
+            }
+        }
     }
 }
 
 #[test]
 fn example_300k_1year() {
     let result = test_simulation("examples/300K_1year.json.conf".into());
-    compare_or_create("examples/300K_1year.expected", &result);
+    compare_or_create("examples/300K_1year_expected.json", &result);
 }
 
 #[cfg(feature = "divan")]
@@ -108,10 +74,8 @@ fn bench_300k_1year_145d(bencher: divan::Bencher) {
     // Load the config file and create the simulation/integrator once.
     let config = build_simulation("examples/300K_1year.json.conf".into());
 
-    let system = Test {
-        data: config.universe,
-    };
-
+    let system = config.system.clone();
+    let integrator = config.integrator.clone();
     // The simulation mutates the integrator, so clone it for each iteration of the bench test.
-    bencher.bench(|| config.integrator.clone().integrate(&mut system.clone()));
+    bencher.bench(|| integrator.clone().integrate(&mut system.clone()));
 }

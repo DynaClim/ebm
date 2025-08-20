@@ -14,29 +14,33 @@ const PERIHELION_LONGTITUDE_RAD: f64 = PERIHELION_LONGTITUDE_DEG.to_radians();
 
 /// Contains all static data required for calculation of physics in this module.
 /// Provides the derivation function [derive] as the public interface.
-#[derive(Deserialize, Serialize, Clone, Debug, Default)]
+#[derive(Deserialize, Serialize, Clone, Debug, Default, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Universe {
+    #[serde(default)]
+    time: f64,
     /// User specified planetary parameters
+    /// NOTE: this field is marked only as default to allow easier testing. Values _MUST_ be provided by the user.
+    #[serde(skip_serializing, default)]
     planet: Planet,
-    initial_temperatures: Vec<f64>,
+    temperatures: Vec<f64>,
 
     // Precomputed latitude arrays
-    #[serde(default)]
+    #[serde(skip)]
     latitude: Vec<Trig>,
 
     // Preallocated arrays, used as scratch for calculations.
-    #[serde(default)]
+    #[serde(skip)]
     albedos: Vec<f64>,
-    #[serde(default)]
+    #[serde(skip)]
     source: Vec<f64>,
-    #[serde(default)]
+    #[serde(skip)]
     transport: Vec<f64>,
-    #[serde(default)]
+    #[serde(skip)]
     sink: Vec<f64>,
-    #[serde(default)]
+    #[serde(skip)]
     dx: Vec<f64>,
-    #[serde(default)]
+    #[serde(skip)]
     dx2: Vec<f64>,
 }
 
@@ -45,16 +49,16 @@ impl Universe {
         Self::default()
     }
 
-    pub fn new_from(planet: Planet, initial_temperatures: Vec<f64>) -> Self {
+    pub fn new_from(planet: Planet, temperatures: Vec<f64>) -> Self {
         Self {
             planet,
-            initial_temperatures,
+            temperatures,
             ..Self::default()
         }
     }
 
     pub fn initialise(&mut self) -> Result<()> {
-        let system_size = self.initial_temperatures.len();
+        let system_size = self.temperatures.len();
         self.latitude = Trig::new_vec(system_size);
         self.albedos = vec![0.0; system_size];
         self.source = vec![0.0; system_size];
@@ -66,8 +70,13 @@ impl Universe {
     }
 
     #[must_use]
-    pub fn initial_temperatures(&self) -> Vec<f64> {
-        self.initial_temperatures.clone()
+    pub fn temperatures(&self) -> Vec<f64> {
+        self.temperatures.clone()
+    }
+
+    pub fn update_for_output(&mut self, time: f64, temperatures: &[f64]) {
+        self.time = time / SECONDS_IN_YEAR;
+        self.temperatures.copy_from_slice(temperatures);
     }
 
     //TODO Sid reference this function
@@ -211,7 +220,7 @@ impl Universe {
 }
 
 // Defines the sources of calculation used for each quantity (e.g. eccentricity, obliquity).
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub enum Source {
     // Value does not vary with time.
     Constant(f64),
@@ -274,7 +283,7 @@ impl Source {
     }
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug, Default)]
+#[derive(Deserialize, Serialize, Clone, Debug, Default, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Planet {
     /// Planet albedo at low temperature, no unit
