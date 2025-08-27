@@ -534,3 +534,6 @@ impl Trig {
 // Spiegel et al. 2008, https://doi.org/10.1086/588089
 // Turbet et al. 2022, https://doi.org/10.1038/s41586-021-03873-w
 // Williams & Kasting 1997, https://doi.org/10.1006/icar.1997.5759
+
+#[cfg(any(test, feature = "divan"))]
+mod tests;

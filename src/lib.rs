@@ -34,3 +34,6 @@ impl System<f64> for Universe {
         Ok(())
     }
 }
+
+#[cfg(any(test, feature = "divan"))]
+mod tests;

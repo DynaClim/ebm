@@ -17,6 +17,13 @@ path = "src/lib.rs"
 name = "ebm"
 path = "src/main.rs"
 
+[profile.dev]
+opt-level = 3
+debug = true
+
+[dev-dependencies]
+pretty_assertions = "1.4.1"
+
 [profile.release]
 opt-level = 3
 debug = true
@@ -36,6 +43,19 @@ sci-file = { git = "https://github.com/DynaClim/sci-file.git" }
 math-macros = { git = "https://github.com/DynaClim/math-macros.git" }
 rayon = "1.11.0"
 itertools = "0.14.0"
+divan = { version = "0.1.21", optional = true }
+
+# This feature is purely for being able to execute divan benches.
+# It is the easiest way to use divan without compiling benches
+# into release builds.
+# See: https://github.com/nvzqz/divan/issues/61#issuecomment-2438845647
+[features]
+divan = ["dep:divan"]
+
+[[bench]]
+name = "divan"
+harness = false
+required-features = ["divan"]
 
 [lints.rust]
 unsafe_code = "forbid"
