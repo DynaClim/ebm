@@ -12,7 +12,7 @@ pub use simulation::{Integrator, Simulation, System};
 
 use anyhow::Result;
 
-impl System for Universe {
+impl System<f64> for Universe {
     // Function that calculates the derivates of temperatures with respect to time
     fn derive(
         &mut self,
@@ -20,16 +20,17 @@ impl System for Universe {
         temperatures: &[f64],
         output: &mut [f64],
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        Ok(self.derive(time, temperatures, output)?)
+        // Function that calculates the derivates of temperatures with respect to time
+        self.derive(time, temperatures, output)?;
+        Ok(())
     }
 
-    // Function that calculates the derivates of temperatures with respect to time
     fn update(
         &mut self,
         time: f64,
         temperatures: &[f64],
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        self.update(time, temperatures);
+        self.update_for_output(time, temperatures);
         Ok(())
     }
 }

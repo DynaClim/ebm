@@ -11,7 +11,7 @@ fn main() -> Result<()> {
         .map(|mut simulation| {
             let mut initial_time = simulation.initial_time;
             let mut final_time = simulation.final_time;
-            let initial_temperatures = simulation.system.initial_temperatures();
+            let initial_temperatures = simulation.system.temperatures();
 
             if !simulation.resume {
                 simulation.system.initialise()?;

@@ -75,7 +75,7 @@ Launching a simulation produces three output files:
 
 For example:
 ```bash
-ebm example.conf simulations
+ebm example.conf simulations --output-format jsonl
 ```
 will produce the following structure:
 (A `run_n` sub directory will be created for each simulation, with `n` as the smallest non pre-existing numerical suffix.)
