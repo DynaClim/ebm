@@ -2,7 +2,7 @@
 
 # **E**nergy **B**alance **M**odel
 
-**ebm** is simple a numerical simulator written in Rust that models the balance between incoming energy from an external source (e.g. the Sun) and outgoing energy from a reservoir (e.g. a planet) over a specified time period. It is used to study long-term evolution of planetary climates.
+**ebm** is a simple numerical simulator written in Rust that models the balance between incoming energy from an external source (e.g. the Sun) and outgoing energy from a reservoir (e.g. a planet) over a specified time period. It is used to study long-term evolution of planetary climates.
 
 
 Features:
@@ -23,6 +23,9 @@ The physics has been validated by the following contributors:
 
  - [Siddharth Bhatnagar, UniGE](https://www.unige.ch/sciences/astro/exoplanets/en/team/scientific-collaborators/bhatnagar-siddharth)
  - [Marine Leyvraz, UniBE](https://www.climate.unibe.ch/about_us/team/leyvraz_marine/index_eng.html)
+ - [Emeline Bolmont, UniGE](https://www.emelinebolmont.com/)
+ - [Maura Brunetti, UniGE](https://www.unige.ch/gap/nonlinear/people/brunetti-maura)
+ - [Jérôme Kasparian, UniGE](https://www.unige.ch/gap/nonlinear/people/jerome-kasparian)
 
 ## Installation
 ### Requirements
@@ -104,3 +107,7 @@ Benchmarking is handled by divan:
 ```bash
 cargo bench --features divan
 ```
+
+## Notes
+
+This work has been carried out within the framework of the NCCR PlanetS supported by the Swiss National Science Foundation under grants 51NF40_182901 and 51NF40_205606.
