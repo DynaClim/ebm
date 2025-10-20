@@ -39,14 +39,25 @@ cargo install --path .
 ```
 The executable will be copied into `$HOME/.cargo/bin/`. You may need to add this directory to your `$PATH`.
 
+## Quickstart Example
+```
+# Create simulation case(s) into the "my_cases" directory.
+python3 scripts/setup.py my_cases
+
+# Launch all simulations from "my_cases" directory, putting results into "my_output" directory.
+ebm -b --output-format jsonl my_cases my_output
+```
+
 ## Usage
 
-Initial conditions are specified into input configuration files (`.conf`) as JSON, which is read by `ebm` to start a simulation. Output data from the simulation is in JSONL format. A simple python script is included to help in generating the JSON cases.
+Initial conditions are specified into configuration files (`.conf`) as JSON, which is read by `ebm` to start a simulation. Output data from the simulation is in JSONL format. A simple python script is included to help in generating the JSON initial conditions.
 
 ### Create a JSON case
-Set the planet properties into the configuration file(s) to the desired values and created the JSON case file.
+Set the planet properties into the configuration file(s) to the desired values and create the JSON initial conditions file(s) into the `config_files` directory.
 
-`python3 scripts/setup.py example.json.conf`
+`python3 scripts/setup.py config_files`
+
+This generates a JSON case (.conf) for each set of input conditions into the designated directory. The total number of simulations will be the combinatorial product of the variables of the planet.
 
 ### Start a simulation
 Simulations can be launched individually, or in batch mode. The user must specify the location of the input file(s) (`.conf`) and the desired output location (`output_directory`).

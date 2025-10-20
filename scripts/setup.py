@@ -50,16 +50,51 @@ Example:
 
 import json
 import sys
+import itertools
+from pathlib import Path
+
+TEMPERATURE_GRID_DIMENSION = 146
 
 """
 Earth like planet
+A simulation input config file is generated for all combinations of the values of the planet.
 """
-def config():
+
+
+def planet_base():
+    return {
+        # creates one simulation for each temperature value, with a uniform distribution.
+        # K
+        "initial_temperatures": uniform_temperatures([300, 100]),
+        # alternatively, construct your own custom temperature profiles:
+        # "initial_temperatures": [[100., 200., 300.], [100., 100., 100.]],
+        "albedo_low_temperature": [0.77],
+        "albedo_high_temperature": [0.28],
+        "temperature_centre_transition": [268.0],
+        "temperature_width_transition": [5.0],
+        "insolation_factor": [1.0, 2.0],
+        "fiducial_diffusion_coefficient": [0.5394],
+        "eccentricity": [
+            *constant([0.0167]),
+            # Can add interpolate, damping, sin, etc structures here
+        ],
+        "obliquity": [
+            *constant([23.44]),
+            # Can add interpolate, damping, sin, etc structures here
+        ],
+        "orbital_period": [365.0],
+        # (land_fraction, water_faction): ensure land_fraction + water_fraction == 1.
+        "land_water_fraction": [(0.3, 0.7)],
+    }
+
+
+def config_base(system):
     return {
         "resume": False,
         # years
         "initial_time": 0.0,
         "final_time": 10.0,
+        "system": system,
         "integrator": {
             "Dopri5": {
                 # Controller for selecting adaptive step size.
@@ -100,29 +135,10 @@ def config():
                 },
             }
         },
-        "universe": {
-            "initial_temperatures": [300. for x in range(146)],
-            "planet": {
-                "albedo_low_temperature": 0.77,
-                "albedo_high_temperature": 0.28,
-                "temperature_centre_transition": 268.0,
-                "temperature_width_transition": 5.0,
-                "insolation_factor": 1.0,
-                "fiducial_diffusion_coefficient": 0.5394,
-                "eccentricity": {
-                    "Constant": 0.0167
-                },
-                "obliquity": {
-                    "Constant": 23.44
-                },
-                "outgoing_longwave_radiation": OLR_INTERPOLATOR,
-                "orbital_period": 365.0,
-                "land_fraction": 0.3,
-                "water_fraction": 0.7,
-            },
-        },
     }
 
+
+#### No need to edit below here #####
 
 OLR_INTERPOLATOR = {
     "x_vals": [
@@ -220,15 +236,85 @@ OLR_INTERPOLATOR = {
 }
 
 
-def make_config(name):
-    config_name = f"{name}.json.conf"
-    print(f"Making config: {config_name}")
-    with open(config_name, "x") as f:
-        f.write(json.dumps(config(), indent=4))
+def make_config_files(output_path):
+    planet = planet_base()
+    # All planets created from the combinatorial expansion of all planet values.
+    combis = [x for x in itertools.product(*planet.values())]
+    for i, planet_values in enumerate(combis):
+        # Create the system for integration from the planet values.
+        system = make_system(*planet_values)
+        # If the temperature profile is uniform, include the starting value in the initial conditions filename.
+        temperature = (
+            int(system["temperatures"][0])
+            if len(set(system["temperatures"])) == 1
+            else "mixed"
+        )
+        # Create the initial conditions structure.
+        config = config_base(system)
+        duration = config["final_time"]
+        # include the initial temperature and simulation duration in the initial conditions filename.
+        config_name = f"{output_path}/{temperature}K_{int(duration)}year_{i}.conf"
+        print(f"Making config: {config_name}")
+        with open(config_name, "x") as f:
+            f.write(json.dumps(config, indent=4))
+
+
+def make_system(
+    initial_temperatures,
+    albedo_low_temperature,
+    albedo_high_temperature,
+    temperature_centre_transition,
+    temperature_width_transition,
+    insolation_factor,
+    fiducial_diffusion_coefficient,
+    eccentricity,
+    obliquity,
+    orbital_period,
+    land_water_fraction,
+):
+    """Creates the system dictionary from provided values."""
+    return {
+        "temperatures": initial_temperatures,
+        "planet": {
+            "albedo_low_temperature": albedo_low_temperature,
+            "albedo_high_temperature": albedo_high_temperature,
+            "temperature_centre_transition": temperature_centre_transition,
+            "temperature_width_transition": temperature_width_transition,
+            "insolation_factor": insolation_factor,
+            "fiducial_diffusion_coefficient": fiducial_diffusion_coefficient,
+            "eccentricity": eccentricity,
+            "obliquity": obliquity,
+            "outgoing_longwave_radiation": OLR_INTERPOLATOR,
+            "orbital_period": orbital_period,
+            "land_fraction": land_water_fraction[0],
+            "water_fraction": land_water_fraction[1],
+        },
+    }
+
+
+def main():
+    if len(sys.argv) == 2:
+        output_path = sys.argv[1]
+        # Create the output directory path if it doesn't already exist.
+        Path(output_path).mkdir(parents=True, exist_ok=True)
+
+        make_config_files(output_path)
+    else:
+        print("usage: python3 setup.py output_dir")
+
+
+def uniform_temperatures(temperatures):
+    """Creates a 1D grid of temperatures for each provided value."""
+    return [[temp for x in range(TEMPERATURE_GRID_DIMENSION)] for temp in temperatures]
+
+
+def constant(values):
+    """Creates an instance of a constant planet value (obliquity, eccentricity, etc) for each provided value."""
+    out = []
+    for val in values:
+        out.append({"Constant": val})
+    return out
 
 
 if __name__ == "__main__":
-    if len(sys.argv) == 2:
-        make_config(sys.argv[1])
-    else:
-        print("usage: python3 setup.py desired_config_name")
+    main()
