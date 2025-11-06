@@ -2,7 +2,7 @@ cargo-features = ["profile-rustflags"]
 
 [package]
 name = "ebm"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Tim"]
 edition = "2024"
 description = "Some kind of simulation tool used by astrophysicsts for some kind of climate modelling."
@@ -32,11 +32,11 @@ codegen-units = 1
 rustflags = ["-C", "target-cpu=native"]
 
 [dependencies]
-anyhow = "1.0.99"
-log = {version = "0.4.27", features = ["std"]}
-serde = {version = "1.0.219", features = ["derive"]}
-serde_json = { version = "1.0.143", features = ["float_roundtrip"] }
-thiserror = "2.0.16"
+anyhow = "1.0.100"
+log = {version = "0.4.28", features = ["std"]}
+serde = {version = "1.0.228", features = ["derive"]}
+serde_json = { version = "1.0.145", features = ["float_roundtrip"] }
+thiserror = "2.0.17"
 astro-const = { git = "https://github.com/DynaClim/astro-const.git" }
 simulation = { git = "https://github.com/DynaClim/simulation.git" }
 sci-file = { git = "https://github.com/DynaClim/sci-file.git" }

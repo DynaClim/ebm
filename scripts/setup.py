@@ -98,7 +98,7 @@ def config_base(system):
         "integrator": {
             "Dopri5": {
                 # Controller for selecting adaptive step size.
-                "step_size_controller": {
+                "step_controller": {
                     # Relative tolerance for computation of adaptive step size.
                     "relative_tolerance": 1.0e-14,
                     # Absolute tolerance for computation of adaptive step size.
