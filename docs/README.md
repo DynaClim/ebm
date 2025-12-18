@@ -26,6 +26,7 @@ The physics has been validated by the following contributors:
  - [Emeline Bolmont, UniGE](https://www.emelinebolmont.com/)
  - [Maura Brunetti, UniGE](https://www.unige.ch/gap/nonlinear/people/brunetti-maura)
  - [Jérôme Kasparian, UniGE](https://www.unige.ch/gap/nonlinear/people/jerome-kasparian)
+ - [Guillaume Chaverot, Université Grenoble Alpes]
 
 ## Installation
 ### Requirements
