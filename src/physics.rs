@@ -5,7 +5,7 @@ use crate::constants::{
 };
 use anyhow::{Context, Result, bail};
 use itertools::izip;
-use sci_file::{Interpolator, LinSpace};
+use sci_file::{Interpolator1D, LinSpace};
 use serde::{Deserialize, Serialize};
 
 const ICE_HEAT_CAPACITY_RECIPROCAL: f64 = ICE_HEAT_CAPACITY.recip();
@@ -239,7 +239,7 @@ pub enum Source {
         initial: f64,
     },
     // Value interpolated from precomputed grid.
-    Interpolate(Interpolator<f64>),
+    Interpolate(Interpolator1D<f64>),
 }
 
 impl Default for Source {
@@ -263,10 +263,7 @@ impl Source {
             } => Ok(Self::sinusoidal_excitation(
                 time, *amplitude, *period, *initial,
             )),
-            Source::Interpolate(interpolator) => {
-                let (_x, y) = interpolator.interpolate(time)?;
-                Ok(y)
-            }
+            Source::Interpolate(interpolator) => Ok(interpolator.interpolate(time)?),
         }
     }
 
@@ -319,7 +316,7 @@ pub struct Planet {
     /// Time evolution of the obliquity of the planteary orbit (deg)
     obliquity: Source,
     /// Interpolator for user specified Outgoing Longwave Radiation (OLR) values (W m^-2)
-    outgoing_longwave_radiation: Interpolator<f64>,
+    outgoing_longwave_radiation: Interpolator1D<f64>,
 
     /// Orbital period of the planet (d)
     orbital_period: f64,
@@ -464,11 +461,9 @@ impl Planet {
             (STEFAN_BOLTZMANN * temperature.powi(4))
                 / (1. + (0.5925 * (temperature / CRITICAL_TEMPERATURE).powi(3)))
         } else {
-            let (_x, y) = self
-                .outgoing_longwave_radiation
+            self.outgoing_longwave_radiation
                 .interpolate(temperature)
-                .context("Outgoing Longwave Radiation")?;
-            y
+                .context("Outgoing Longwave Radiation")?
         };
 
         Ok(olr)

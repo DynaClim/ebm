@@ -104,8 +104,8 @@ fn test_planet() -> Planet {
         559.799147900183,
     ];
 
-    let mut interpolator = Interpolator::<f64>::new();
-    interpolator.init(&x_vals, &y_vals);
+    let mut interpolator = Interpolator1D::<f64>::new();
+    interpolator.init(&x_vals, &y_vals).unwrap();
     Planet {
         // will be computed during initialisation
         heat_capacity_reciprocal: 0.0,
