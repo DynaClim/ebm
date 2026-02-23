@@ -32,11 +32,11 @@ codegen-units = 1
 rustflags = ["-C", "target-cpu=native"]
 
 [dependencies]
-anyhow = "1.0.100"
-log = {version = "0.4.28", features = ["std"]}
+anyhow = "1.0.102"
+log = {version = "0.4.29", features = ["std"]}
 serde = {version = "1.0.228", features = ["derive"]}
-serde_json = { version = "1.0.145", features = ["float_roundtrip"] }
-thiserror = "2.0.17"
+serde_json = { version = "1.0.149", features = ["float_roundtrip"] }
+thiserror = "2.0.18"
 astro-const = { git = "https://github.com/DynaClim/astro-const.git" }
 simulation = { git = "https://github.com/DynaClim/simulation.git" }
 sci-file = { git = "https://github.com/DynaClim/sci-file.git" }
