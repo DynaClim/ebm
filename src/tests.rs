@@ -5,9 +5,9 @@ use simulation::{Integrator, simulation::InputConfig};
 use std::path::Path;
 use std::path::PathBuf;
 
-fn build_simulation(config_path: PathBuf) -> InputConfig<Universe> {
+fn build_simulation(config_path: PathBuf) -> InputConfig<Universe, f64> {
     // Parse the config file.
-    let mut config: InputConfig<Universe> = read_json_from_file(&config_path).unwrap();
+    let mut config: InputConfig<Universe, f64> = read_json_from_file(&config_path).unwrap();
     config.initial_time *= SECONDS_IN_YEAR;
     config.final_time *= SECONDS_IN_YEAR;
 

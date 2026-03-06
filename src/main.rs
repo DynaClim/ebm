@@ -5,7 +5,7 @@ use rayon::prelude::*;
 
 fn main() -> Result<()> {
     // Launch each simuluation (input config file) in parallel.
-    let simulations = Simulation::<Universe>::new()?;
+    let simulations = Simulation::<Universe, f64>::new()?;
     simulations
         .into_par_iter()
         .map(|mut simulation| {
